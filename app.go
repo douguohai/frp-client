@@ -19,9 +19,23 @@ func NewApp() *App {
 // so we can call the runtime methods
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	go doCron()
+}
+
+func (a *App) shutdown(ctx context.Context) bool {
+	a.ctx = ctx
+	ticker.Stop()
+	return false
 }
 
 // Greet returns a greeting for the given name
 func (a *App) Greet(name string) string {
 	return fmt.Sprintf("Hello %s, It's show time!", name)
+}
+
+// Greet returns a greeting for the given name
+func (a *App) SetFrpServiceConfig(ip string, port int) string {
+	serverIp = ip
+	serverPort = port
+	return "ok"
 }

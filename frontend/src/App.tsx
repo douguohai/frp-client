@@ -10,21 +10,22 @@ import 'amis/sdk/iconfont.css';
 import axios from 'axios';
 import copy from 'copy-to-clipboard';
 
-import {addRule, AlertComponent, render as renderAmis, ToastComponent} from 'amis';
-import {toast} from 'amis-ui';
+import { addRule, AlertComponent, render as renderAmis, ToastComponent } from 'amis';
+import { toast } from 'amis-ui';
 import Icon from './assert/4873dbfaf6a5.png'
+import { SetFrpServiceConfig } from "../wailsjs/go/main/App";
 
 // amis 环境配置
 const env = {
     // 下面三个接口必须实现
     fetcher: ({
-                  url, // 接口地址
-                  method, // 请求方法 get、post、put、delete
-                  data, // 请求数据
-                  responseType,
-                  config, // 其他配置
-                  headers // 请求头
-              }: any) => {
+        url, // 接口地址
+        method, // 请求方法 get、post、put、delete
+        data, // 请求数据
+        responseType,
+        config, // 其他配置
+        headers // 请求头
+    }: any) => {
         config = config || {};
         config.withCredentials = true;
         responseType && (config.responseType = responseType);
@@ -147,7 +148,14 @@ class AMISComponent extends React.Component<any, any> {
         function handleBroadcast(type: string, rawEvent: any, data: any) {
             switch (type) {
                 case 'SaveConfig':
-                    console.log({type: type, body: data})
+                    console.log({ type: type, body: data })
+                    SetFrpServiceConfig(data.serverIp, data.serverPort).then((result) => {
+                        // Do something with result
+                        console.log(result);
+                    }).catch((error) => {
+                        // Do something with error
+                        console.log(error);
+                    });;
                     break
             }
         }
@@ -360,8 +368,6 @@ class AMISComponent extends React.Component<any, any> {
                                 "type": "form",
                                 "api": {
                                     "url": "/api/addProxy",
-                                    // "url": "/self/api/getProxy",
-                                    // "sendOn":this.state.adminPort+"!=0",
                                     "method": "post",
                                 },
                                 "closeDialogOnSubmit": true,
@@ -417,6 +423,7 @@ class AMISComponent extends React.Component<any, any> {
                             "method": "get",
                             "replaceData": true
                         },
+                        "interval": 10000,
                         "data": {
                             "now": 1,
                             "rows": []
@@ -431,40 +438,41 @@ class AMISComponent extends React.Component<any, any> {
                                 "card": {
                                     "toolbar": [
                                         {
-                                            "type": "switch",
-                                            "name": "status",
-                                            "onText": "已开启",
-                                            "offText": "已关闭",
-                                            "value": "${status}",
-                                            "onEvent": {
-                                                "change": {
-                                                    "actions": [
-                                                        {
-                                                            "actionType": "ajax",
-                                                            "args": {
-                                                                "api": {
-                                                                    "url": "/api/openProxy",
-                                                                    "method": "put",
-                                                                    "data": {
-                                                                        "status": "${status}",
-                                                                        "proxyName": "${proxyName}"
-                                                                    },
+                                            "type": "tooltip-wrapper",
+                                            "content": "${status}",
+                                            "body": {
+                                                "type": "switch",
+                                                "name": "status",
+                                                "onText": "已开启",
+                                                "offText": "${status}已关闭",
+                                                "value": "${status}",
+                                                "onEvent": {
+                                                    "change": {
+                                                        "actions": [
+                                                            {
+                                                                "actionType": "ajax",
+                                                                "args": {
+                                                                    "api": {
+                                                                        "url": "/api/openProxy",
+                                                                        "method": "put",
+                                                                        "data": {
+                                                                            "status": "${status}",
+                                                                            "proxyName": "${proxyName}"
+                                                                        },
+                                                                    }
                                                                 }
                                                             }
-                                                        },
-                                                        // {
-                                                        //     "actionType": "reload",
-                                                        //     "componentId": "card-service-id",
-                                                        // }
-                                                    ]
+                                                        ]
+                                                    }
                                                 }
                                             }
-                                        }
+                                        },
+
                                     ],
                                     "header": {
                                         "title": "${proxyName}",
                                         "subTitle": "${proxyType}",
-                                        "subTitlePlaceholder": "暂无说明",
+                                        "subTitlePlaceholder": "${status}",
                                         "avatar": Icon,
                                         "avatarClassName": "pull-left thumb b-3x m-r"
                                     },
@@ -478,7 +486,7 @@ class AMISComponent extends React.Component<any, any> {
                                             "label": "远程端口"
                                         },
                                         {
-                                            "name": "https://www.baidu.com",
+                                            "name": "remoteAddr",
                                             "label": "访问链接"
                                         }
                                     ],
@@ -605,9 +613,9 @@ class APP extends React.Component<any, any> {
 
         return (
             <>
-                <ToastComponent key="toast" position={'top-right'}/>
-                <AlertComponent key="alert"/>
-                <AMISComponent/>
+                <ToastComponent key="toast" position={'top-right'} />
+                <AlertComponent key="alert" />
+                <AMISComponent />
             </>
         );
     }

@@ -2,11 +2,11 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -15,13 +15,14 @@ import (
 	"github.com/douguohai/frp-client2/message"
 	"github.com/douguohai/frp-client2/utils"
 	"github.com/fatedier/frp/client"
+	"github.com/fatedier/frp/client/proxy"
 	"github.com/fatedier/frp/pkg/config"
 	"github.com/fatedier/frp/pkg/consts"
 	"github.com/gorilla/mux"
 )
 
 var (
-	adminPort, serverPort, frpAdminPort int
+	serverPort, frpAdminPort int
 
 	server *client.Service
 
@@ -31,87 +32,26 @@ var (
 	// 代理配置
 	defaultProxyConfList  = map[string]config.ProxyConf{}
 	activityProxyConfList = map[string]config.ProxyConf{}
+	proxyRunStatus        = map[string]message.TCPProxyStatsu{}
 
 	serverCfg = config.GetDefaultClientConf()
 
 	ctx = context.Background()
 
-	httpServerReadTimeout  = 60 * time.Second
-	httpServerWriteTimeout = 60 * time.Second
-
 	run int64 = 0
+
+	// 创建定时任务，每秒执行一次
+	ticker = time.NewTicker(time.Second * 5)
 )
 
 func init() {
-	adminPort, _ = utils.GetAvailablePort()
 	frpAdminPort, _ = utils.GetAvailablePort()
-	//adminPort = 8080
-	fmt.Println(adminPort)
-	go startLocalServer(fmt.Sprintf(":%v", adminPort))
 }
 
-// dealMsg 处理消息
-func dealMsg(msg message.Msg) interface{} {
-	// 解析实际消息体 将interface转换为JSON字符串
-	jsonData, err := json.Marshal(msg.Body)
-	if err != nil {
-		fmt.Println("转换为JSON时出错：", err)
-		return message.Msg{
-			Type: message.MsgParseErr,
-		}
-	}
-	switch msg.Type {
-	case message.SaveConfig:
-		// 将interface转换为JSON字符串
-		var server = message.ConnectServerMsg{}
-		if err := json.Unmarshal(jsonData, &server); err != nil {
-			fmt.Println("解析JSON时出错：", err)
-			return message.Msg{
-				Type: message.MsgParseErr,
-			}
-		} else {
-			serverIp = server.ServerIp
-			serverPort = server.ServerPort
-			fmt.Println("收到配置信息 frp server：", serverIp, serverPort)
-			return message.Msg{
-				Type: message.Success,
-			}
-		}
-	case "hello":
-		return "pong"
-	}
-	return nil
-}
-
-// startLocalServer 开启本地服务
-func startLocalServer(address string) error {
+// getLocalServerRoute 开启本地服务
+func getLocalServerRoute() *mux.Router {
 
 	router := mux.NewRouter()
-
-	// 创建 CORS 处理函数
-	corsHandler := func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-
-			// 设置允许的源
-			w.Header().Set("Access-Control-Allow-Origin", r.Header.Get("origin"))
-
-			// 设置允许的方法
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE")
-
-			// 设置允许的请求头
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-
-			if r.Method == "OPTIONS" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-
-			// 继续处理请求
-			h.ServeHTTP(w, r)
-		})
-	}
 
 	router.HandleFunc("/api/getProxy", func(writer http.ResponseWriter, request *http.Request) {
 		var proxy = getProxy()
@@ -238,14 +178,17 @@ func startLocalServer(address string) error {
 		defer func() {
 			if v := recover(); v != nil {
 				print(v)
-				buildFail(writer, "操作失败")
+				buildFail(writer, "操作失败", "")
 				return
 			}
 		}()
 
 		err = openProxy(proxy)
 		if err != nil {
-			buildFail(writer, err.Error())
+			fmt.Print(err)
+			buildFail(writer, err.Error(), struct {
+				Status bool `json:"status"`
+			}{Status: false})
 			return
 		}
 
@@ -255,6 +198,7 @@ func startLocalServer(address string) error {
 			ResponseMsg:    "操作成功",
 		}
 		jsonData, _ := json.Marshal(data)
+
 		writer.Write(jsonData)
 	}).Methods("PUT")
 
@@ -296,31 +240,7 @@ func startLocalServer(address string) error {
 		writer.Write(jsonData)
 	}).Methods("GET")
 
-	// 静态资源路由
-	staticDir := "./resources/dist/"
-	router.PathPrefix("/static").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
-
-	fmt.Println("[监听服务] 本地服务监听 %i 端口", adminPort)
-
-	webServer := &http.Server{
-		Addr:         address,
-		Handler:      corsHandler(router),
-		ReadTimeout:  httpServerReadTimeout,
-		WriteTimeout: httpServerWriteTimeout,
-	}
-
-	if address == "" {
-		address = ":http"
-	}
-	ln, err := net.Listen("tcp", address)
-	if err != nil {
-		return err
-	}
-
-	go func() {
-		_ = webServer.Serve(ln)
-	}()
-	return nil
+	return router
 }
 
 // addProxy 添加代理
@@ -360,13 +280,30 @@ func getProxy() []message.ProxyMsgVo {
 		switch proxyType {
 		case "tcp":
 			temp := value.(*config.TCPProxyConf)
-			_, exist := activityProxyConfList[temp.ProxyName]
+			_, run := activityProxyConfList[temp.ProxyName]
+			proxyStatus, has := proxyRunStatus[temp.ProxyName]
+			tempStatus := true
+			if !run {
+				tempStatus = false
+			}
+			tempRemoteAddress := "暂无"
+			if has {
+				tempRemoteAddress = proxyStatus.RemoteAddr
+				if proxyStatus.Status == proxy.ProxyPhaseRunning {
+
+				} else if proxyStatus.Status == proxy.ProxyPhaseClosed {
+					tempStatus = false
+				} else if proxyStatus.Status == proxy.ProxyPhaseStartErr {
+					tempStatus = false
+				}
+			}
 			values = append(values, message.ProxyMsgVo{
 				ProxyName:  temp.ProxyName,
 				Type:       temp.ProxyType,
 				LocalPort:  temp.LocalPort,
 				RemotePort: temp.RemotePort,
-				Status:     exist,
+				Status:     tempStatus,
+				RemoteAddr: tempRemoteAddress,
 			})
 		}
 	}
@@ -441,38 +378,121 @@ func connectFrpServer() {
 	serverCfg.ServerAddr = serverIp
 	serverCfg.ServerPort = serverPort
 	if err := serverCfg.Validate(); err != nil {
-		err = fmt.Errorf("parse config error: %v", err)
+		fmt.Print(err)
 		return
 	}
 	var err error
-	server, err = client.NewService(serverCfg, activityProxyConfList, nil, "")
+	server, _ = client.NewService(serverCfg, activityProxyConfList, nil, "")
 	atomic.CompareAndSwapInt64(&run, int64(0), int64(1))
 	err = server.Run(ctx)
 	if err != nil {
 		fmt.Println(err)
 		atomic.CompareAndSwapInt64(&run, int64(1), int64(0))
 		activityProxyConfList = map[string]config.ProxyConf{}
+		ticker.Stop()
 		// w.SendMessage(message.Msg{
 		// 	Type: message.ConnectError}, func(m *astilectron.EventMessage) {
 		// })
 	}
 }
 
+// unlockConfig 解锁frp服务器配置
 func unlockConfig() {
 	serverCfg.ServerAddr = ""
 	serverCfg.ServerPort = 0
 	activityProxyConfList = map[string]config.ProxyConf{}
 	if run == 1 {
 		server.Close()
+		atomic.CompareAndSwapInt64(&run, int64(1), int64(0))
 	}
 }
 
-func buildFail(writer http.ResponseWriter, msg string) {
-	data := message.Result{
-		Status: -1,
-		Msg:    msg,
+// buildFail 构建失败
+func buildFail(writer http.ResponseWriter, msg string, data interface{}) {
+	temp := message.ResultC{
+		Result: message.Result{
+			Status: -1,
+			Msg:    msg,
+		},
+		Data: data,
 	}
-	jsonData, _ := json.Marshal(data)
+	jsonData, _ := json.Marshal(temp)
 	writer.Write(jsonData)
-	return
+}
+
+// tryGetProxyManager 尝试获取代理管理器
+func doCron() {
+	for range ticker.C {
+		fmt.Println("定时任务执行", time.Now().Local())
+		if run == 1 {
+			getProxyStatus()
+		}
+	}
+}
+
+// tryGetProxyManager 尝试获取代理管理器
+func getProxyStatus() {
+
+	// 要执行的任务
+	fmt.Println("定时任务执行")
+
+	//获取service 中的ctl属性
+
+	// 要发送的 API 请求
+	url := fmt.Sprintf("http://localhost:%v/api/status", frpAdminPort)
+	method := "GET"
+
+	// 认证信息
+	username := "admin"
+	password := "admin"
+
+	// 创建 HTTP 客户端
+	client := &http.Client{}
+
+	// 创建请求对象
+	req, err := http.NewRequest(method, url, nil)
+	if err != nil {
+		fmt.Println("创建请求失败:", err)
+		return
+	}
+
+	// 添加 Basic Authentication 请求头
+	auth := username + ":" + password
+	base64Auth := base64.StdEncoding.EncodeToString([]byte(auth))
+	req.Header.Add("Authorization", "Basic "+base64Auth)
+
+	// 发送请求
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("发送请求失败:", err)
+		return
+	}
+	defer resp.Body.Close()
+
+	// 处理响应
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("读取响应失败:", err)
+		return
+	}
+
+	// 将响应体解析为 JSON 格式
+	var innerProxys message.InnerProxyStatus
+	err = json.Unmarshal(body, &innerProxys)
+	if err != nil {
+		fmt.Println("解析 JSON 失败:", err)
+		return
+	}
+
+	proxyRunStatus = map[string]message.TCPProxyStatsu{}
+	for _, ts := range innerProxys.TCP {
+		proxyRunStatus[ts.Name] = ts
+	}
+
+	// 打印 JSON 数据
+	fmt.Println(innerProxys)
+
+	fmt.Println("请求成功", proxyRunStatus)
+
 }

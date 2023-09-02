@@ -9,5 +9,12 @@
   "author": {
     "name": "douguohai",
     "email": "douguohai@163.com"
+  },
+  "Info": {
+    "companyName": "tianwen",
+    "productName": "frpClient",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright.........",
+    "comments": "Built using Wails (https://wails.io)"
   }
 }

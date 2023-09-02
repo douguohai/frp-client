@@ -32,6 +32,7 @@ type ProxyMsgVo struct {
 	LocalPort  int    `json:"localPort"`
 	RemotePort int    `json:"remotePort"`
 	Status     bool   `json:"status"`
+	RemoteAddr string `json:"remoteAddr"`
 }
 
 type ProxyMsgVos struct {
@@ -41,6 +42,11 @@ type ProxyMsgVos struct {
 type Result struct {
 	Status int    `json:"status"`
 	Msg    string `json:"msg"`
+}
+
+type ResultC struct {
+	Result
+	Data interface{} `json:"data"`
 }
 
 type ProxyResult struct {
@@ -57,4 +63,20 @@ type AjaxResult struct {
 type ProxyStatus struct {
 	ProxyName string `json:"proxyName"`
 	Status    bool   `json:"status"`
+}
+
+// InnerProxyStatus 内部代理状态
+type InnerProxyStatus struct {
+	TCP []TCPProxyStatsu `json:"tcp"`
+}
+
+// TCPProxyStatus
+type TCPProxyStatsu struct {
+	Name       string `json:"name"`
+	Type       string `json:"type"`
+	Status     string `json:"status"`
+	Err        string `json:"err"`
+	LocalAddr  string `json:"local_addr"`
+	Plugin     string `json:"plugin"`
+	RemoteAddr string `json:"remote_addr"`
 }
