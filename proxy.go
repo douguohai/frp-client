@@ -188,7 +188,7 @@ func getLocalServerRoute() *mux.Router {
 			fmt.Print(err)
 			buildFail(writer, err.Error(), struct {
 				Status bool `json:"status"`
-			}{Status: false})
+			}{Status: true})
 			return
 		}
 
@@ -291,10 +291,9 @@ func getProxy() []message.ProxyMsgVo {
 				tempRemoteAddress = proxyStatus.RemoteAddr
 				if proxyStatus.Status == proxy.ProxyPhaseRunning {
 
-				} else if proxyStatus.Status == proxy.ProxyPhaseClosed {
+				} else if proxyStatus.Status == proxy.ProxyPhaseClosed || proxyStatus.Status == proxy.ProxyPhaseStartErr {
 					tempStatus = false
-				} else if proxyStatus.Status == proxy.ProxyPhaseStartErr {
-					tempStatus = false
+					tempRemoteAddress = "暂无"
 				}
 			}
 			values = append(values, message.ProxyMsgVo{
@@ -347,9 +346,6 @@ func delProxy(proxy message.ProxyMsg) (err error) {
 // addProxy 添加代理
 // proxy 代理信息
 func openProxy(proxyStatus message.ProxyStatus) error {
-	if run == 0 {
-		return errors.New("远程服务未连接，请连接远程服务")
-	}
 	proxy, has := defaultProxyConfList[proxyStatus.ProxyName]
 	if !has {
 		return errors.New("不存在该名称的代理")
@@ -358,6 +354,9 @@ func openProxy(proxyStatus message.ProxyStatus) error {
 		activityProxyConfList[proxyStatus.ProxyName] = proxy
 	} else {
 		delete(activityProxyConfList, proxyStatus.ProxyName)
+	}
+	if run == 0 {
+		return errors.New("远程服务未连接，请连接远程服务")
 	}
 	return server.ReloadConf(activityProxyConfList, nil)
 }
@@ -426,6 +425,8 @@ func doCron() {
 		fmt.Println("定时任务执行", time.Now().Local())
 		if run == 1 {
 			getProxyStatus()
+		} else {
+			proxyRunStatus = map[string]message.TCPProxyStatsu{}
 		}
 	}
 }

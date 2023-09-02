@@ -442,10 +442,9 @@ class AMISComponent extends React.Component<any, any> {
                                             "content": "${status}",
                                             "body": {
                                                 "type": "switch",
-                                                "name": "status",
                                                 "onText": "已开启",
-                                                "offText": "${status}已关闭",
-                                                "value": "${status}",
+                                                "offText": "已关闭",
+                                                "name": "status",
                                                 "onEvent": {
                                                     "change": {
                                                         "actions": [
@@ -461,7 +460,12 @@ class AMISComponent extends React.Component<any, any> {
                                                                         },
                                                                     }
                                                                 }
+                                                            },
+                                                            {
+                                                                "actionType": "static",
+                                                                "componentName": "status",
                                                             }
+
                                                         ]
                                                     }
                                                 }

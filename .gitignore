@@ -10,5 +10,6 @@ frontend/dist
 out
 gen
 !/.vscode/
-!/build/bin/
+build/bin/
 frontend/node_modules
+build/bin/test-wails-dev.exe
