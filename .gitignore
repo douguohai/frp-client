@@ -12,4 +12,3 @@ gen
 !/.vscode/
 build/bin/
 frontend/node_modules
-build/bin/test-wails-dev.exe
