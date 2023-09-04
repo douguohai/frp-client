@@ -80,3 +80,14 @@ type TCPProxyStatsu struct {
 	Plugin     string `json:"plugin"`
 	RemoteAddr string `json:"remote_addr"`
 }
+
+type ServiceInfo struct {
+	ServerIp   string `json:"serverIp"`
+	ServerPort int    `json:"serverPort"`
+	RunStatus  int64  `json:"runStatus"` //0 未链接 1 已连接 -1 尝试连接中
+}
+
+type ServiceResult struct {
+	Result
+	Data ServiceInfo `json:"data"`
+}

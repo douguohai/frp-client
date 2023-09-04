@@ -132,16 +132,6 @@ class AMISComponent extends React.Component<any, any> {
         super(props);
     }
 
-    componentDidMount() {
-        // This will wait for the astilectron namespace to be ready
-
-
-    }
-
-    componentWillUnmount() {
-
-    }
-
 
     render() {
 
@@ -149,14 +139,6 @@ class AMISComponent extends React.Component<any, any> {
             switch (type) {
                 case 'SaveConfig':
                     console.log({ type: type, body: data })
-                    SetFrpServiceConfig(data.serverIp, data.serverPort).then((result) => {
-                        // Do something with result
-                        console.log(result);
-                    }).catch((error) => {
-                        // Do something with error
-                        console.log(error);
-                    });;
-                    break
             }
         }
 
@@ -168,7 +150,11 @@ class AMISComponent extends React.Component<any, any> {
                 "body": [
                     {
                         "type": "form",
-                        // "debug": true,
+                        "initApi": "/api/getServer",
+                        "interval": 10000,
+                        "api": {
+                            "url": "/api/connect"
+                        },
                         "id": "server-config-form",
                         "title": "服务器设置",
                         "autoFocus": false,
@@ -196,15 +182,46 @@ class AMISComponent extends React.Component<any, any> {
                                 "type": "button",
                                 "icon": "fa fa-trash",
                                 "level": "info",
-                                "id": "lock-server-login-button",
-                                "label": "锁定",
-                                "tooltip": "请完善远程转发服务器配置，并点击锁定按钮",
+                                "id": "connect-id",
+                                "label": "连接",
+                                "tooltip": "连接远程服务器并进行验证",
                                 "onEvent": {
                                     "click": {
                                         "actions": [
                                             {
-                                                "actionType": "validate",
-                                                "componentId": "server-config-form",
+                                                "actionType": "submit",
+                                                "componentId": "server-config-form"
+                                            },
+                                            {
+                                                "actionType": "disabled",
+                                                "expression": "${event.data.responseResult.responseStatus === 0}",
+                                                "componentId": "connect-id"
+                                            },
+                                            {
+                                                "actionType": "reload",
+                                                "componentId": "server-config-form"
+                                            },
+
+                                            {
+                                                "actionType": "parallel",
+                                                "children": [
+                                                    {
+                                                        "actionType": "disabled",
+                                                        "componentId": "server-ip-id"
+                                                    },
+                                                    {
+                                                        "actionType": "disabled",
+                                                        "componentId": "server-port-id"
+                                                    },
+                                                    {
+                                                        "actionType": "disabled",
+                                                        "componentId": "connect-id"
+                                                    },
+                                                    {
+                                                        "actionType": "enabled",
+                                                        "componentId": "disconnect-server-button"
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }
@@ -214,10 +231,9 @@ class AMISComponent extends React.Component<any, any> {
                                 "type": "button",
                                 "icon": "fa fa-trash",
                                 "level": "info",
-                                "id": "unlock-server-login-button",
-                                "disabled": true,
-                                "label": "解锁",
-                                "tooltip": "解锁后如当前存在正在运行的映射，将全部中断",
+                                "id": "disconnect-server-button",
+                                "label": "中断",
+                                "tooltip": "断后如当前存在正在运行的映射，将全部中断",
                                 "onEvent": {
                                     "click": {
                                         "actions": [
@@ -227,6 +243,10 @@ class AMISComponent extends React.Component<any, any> {
                                                     "api": {
                                                         "url": "/api/unlock",
                                                         "method": "get"
+                                                    },
+                                                    "data": {
+                                                        "serverIp": "${serverIp}",
+                                                        "serverPort": "${serverPort}"
                                                     }
                                                 },
                                             },
@@ -242,10 +262,6 @@ class AMISComponent extends React.Component<any, any> {
                                                 "children": [
                                                     {
                                                         "actionType": "enabled",
-                                                        "componentId": "lock-server-login-button"
-                                                    },
-                                                    {
-                                                        "actionType": "enabled",
                                                         "componentId": "server-ip-id"
                                                     },
                                                     {
@@ -254,49 +270,14 @@ class AMISComponent extends React.Component<any, any> {
                                                     },
                                                     {
                                                         "actionType": "disabled",
-                                                        "componentId": "unlock-server-login-button"
+                                                        "componentId": "disconnect-server-button"
                                                     },
                                                     {
-                                                        "actionType": "disabled",
+                                                        "actionType": "enabled",
                                                         "componentId": "connect-id"
                                                     },
                                                 ]
                                             }
-                                        ]
-                                    }
-                                }
-                            },
-                            {
-                                "type": "button",
-                                "icon": "fa fa-trash",
-                                "level": "info",
-                                "disabled": true,
-                                "id": "connect-id",
-                                "label": "激活",
-                                "tooltip": "连接远程服务器并进行验证",
-                                "onEvent": {
-                                    "click": {
-                                        "actions": [
-                                            {
-                                                "actionType": "ajax",
-                                                "args": {
-                                                    "api": {
-                                                        "url": "/api/connect",
-                                                        "method": "get"
-                                                    }
-                                                },
-                                            },
-                                            {
-                                                "actionType": "toast",
-                                                "args": {
-                                                    "msg": "${responseMsg}"
-                                                }
-                                            },
-                                            {
-                                                "actionType": "disabled",
-                                                "expression": "${event.data.responseResult.responseStatus === 0}",
-                                                "componentId": "connect-id"
-                                            },
                                         ]
                                     }
                                 }
@@ -305,38 +286,34 @@ class AMISComponent extends React.Component<any, any> {
                         "onEvent": {
                             "validateSucc": {
                                 "actions": [
-                                    {
-                                        "actionType": "broadcast",
-                                        "args": {
-                                            "eventName": "SaveConfig"
-                                        },
-                                        "data": {
-                                            "serverIp": "${serverIp}",
-                                            "serverPort": "${serverPort}"
-                                        }
-                                    },
+
+
+                                ]
+                            },
+                            "inited": {
+                                "actions": [
                                     {
                                         "actionType": "parallel",
                                         "children": [
                                             {
                                                 "actionType": "disabled",
-                                                "componentId": "lock-server-login-button"
+                                                "componentId": "server-ip-id",
+                                                "expression": "${event.data.runStatus}",
                                             },
                                             {
                                                 "actionType": "disabled",
-                                                "componentId": "server-ip-id"
+                                                "componentId": "server-port-id",
+                                                "expression": "${event.data.runStatus}",
                                             },
                                             {
                                                 "actionType": "disabled",
-                                                "componentId": "server-port-id"
+                                                "componentId": "connect-id",
+                                                "expression": "${event.data.runStatus}",
                                             },
                                             {
-                                                "actionType": "enabled",
-                                                "componentId": "connect-id"
-                                            },
-                                            {
-                                                "actionType": "enabled",
-                                                "componentId": "unlock-server-login-button"
+                                                "actionType": "disabled",
+                                                "componentId": "disconnect-server-button",
+                                                "expression": "${event.data.runStatus==false}",
                                             }
                                         ]
                                     }

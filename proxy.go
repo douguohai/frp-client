@@ -203,23 +203,41 @@ func getLocalServerRoute() *mux.Router {
 	}).Methods("PUT")
 
 	router.HandleFunc("/api/connect", func(writer http.ResponseWriter, request *http.Request) {
-		if serverIp == "" || serverPort == 0 {
-			data := message.AjaxResult{
-				ResponseStatus: -1,
-				ResponseMsg:    "请配置服务器并锁定配置",
-			}
-			jsonData, _ := json.Marshal(data)
-			writer.Write(jsonData)
+
+		// 读取请求体
+		body, err := io.ReadAll(request.Body)
+		if err != nil {
+			http.Error(writer, "Failed to read request body", http.StatusBadRequest)
 			return
 		}
+
+		// 解析 JSON 数据
+		var serverInfo = message.ConnectServerMsg{}
+		err = json.Unmarshal(body, &serverInfo)
+		if err != nil {
+			http.Error(writer, "Failed to parse JSON", http.StatusBadRequest)
+			return
+		}
+
+		defer func() {
+			if v := recover(); v != nil {
+				print(v)
+				buildFail(writer, "操作失败", "")
+				return
+			}
+		}()
+		serverIp = serverInfo.ServerIp
+		serverPort = serverInfo.ServerPort
 		go connectFrpServer()
-		data := message.AjaxResult{
-			ResponseStatus: 0,
-			ResponseMsg:    "操作成功",
+		data := message.ResultC{
+			Result: message.Result{
+				Status: 0,
+				Msg:    "操作成功",
+			},
 		}
 		jsonData, _ := json.Marshal(data)
 		writer.Write(jsonData)
-	}).Methods("GET")
+	}).Methods("POST")
 
 	router.HandleFunc("/api/unlock", func(writer http.ResponseWriter, request *http.Request) {
 		if serverIp == "" || serverPort == 0 {
@@ -235,6 +253,18 @@ func getLocalServerRoute() *mux.Router {
 		data := message.AjaxResult{
 			ResponseStatus: 0,
 			ResponseMsg:    "操作成功",
+		}
+		jsonData, _ := json.Marshal(data)
+		writer.Write(jsonData)
+	}).Methods("GET")
+
+	router.HandleFunc("/api/getServer", func(writer http.ResponseWriter, request *http.Request) {
+		data := message.ServiceResult{
+			Result: message.Result{
+				Status: 0,
+				Msg:    "操作成功",
+			},
+			Data: getServiceInfo(),
 		}
 		jsonData, _ := json.Marshal(data)
 		writer.Write(jsonData)
@@ -366,9 +396,10 @@ func connectFrpServer() {
 	if run == 1 {
 		server.Close()
 	}
+	run = -1
 	serverCfg.AdminUser = "admin"
 	serverCfg.AdminPwd = "admin"
-	serverCfg.DialServerTimeout = 3
+	serverCfg.DialServerTimeout = 5
 	frpAdminPort, _ = utils.GetAvailablePort()
 	serverCfg.AdminPort = frpAdminPort
 
@@ -382,7 +413,7 @@ func connectFrpServer() {
 	}
 	var err error
 	server, _ = client.NewService(serverCfg, activityProxyConfList, nil, "")
-	atomic.CompareAndSwapInt64(&run, int64(0), int64(1))
+	atomic.CompareAndSwapInt64(&run, int64(-1), int64(1))
 	err = server.Run(ctx)
 	if err != nil {
 		fmt.Println(err)
@@ -403,6 +434,8 @@ func unlockConfig() {
 	if run == 1 {
 		server.Close()
 		atomic.CompareAndSwapInt64(&run, int64(1), int64(0))
+	} else {
+		atomic.CompareAndSwapInt64(&run, int64(-1), int64(0))
 	}
 }
 
@@ -496,4 +529,26 @@ func getProxyStatus() {
 
 	fmt.Println("请求成功", proxyRunStatus)
 
+}
+
+// tryGetProxyManager 尝试获取代理管理器
+func getServiceInfo() message.ServiceInfo {
+	if serverIp == "" || serverPort == 0 {
+		defer func() {
+			if run == 1 {
+				server.Close()
+			}
+		}()
+		return message.ServiceInfo{
+			ServerIp:   "127.0.0.1",
+			ServerPort: 0,
+			RunStatus:  0,
+		}
+	} else {
+		return message.ServiceInfo{
+			ServerIp:   serverIp,
+			ServerPort: serverPort,
+			RunStatus:  run,
+		}
+	}
 }
