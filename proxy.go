@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -228,12 +229,30 @@ func getLocalServerRoute() *mux.Router {
 		}()
 		serverIp = serverInfo.ServerIp
 		serverPort = serverInfo.ServerPort
-		go connectFrpServer()
+
+		// 创建一个通道
+		ch := make(chan int)
+
+		// 启动一个协程执行某个任务，并将通道传递给它
+		go connectFrpServer(ch)
+
 		data := message.ResultC{
 			Result: message.Result{
 				Status: 0,
-				Msg:    "操作成功",
+				Msg:    "连接成功",
 			},
+		}
+
+		// 等待协程的反馈消息，并在 5 秒钟的时间内超时
+		select {
+		case msg := <-ch:
+			fmt.Println(msg)
+			data.Result = message.Result{
+				Status: -1,
+				Msg:    "连接失败,请检查服务器配置信息",
+			}
+		case <-time.After(5 * time.Second):
+			fmt.Println("5 秒未返回错误，默认认为启动成功")
 		}
 		jsonData, _ := json.Marshal(data)
 		writer.Write(jsonData)
@@ -336,6 +355,11 @@ func getProxy() []message.ProxyMsgVo {
 			})
 		}
 	}
+
+	//对value 进行排序
+	sort.Slice(values, func(i, j int) bool {
+		return values[i].ProxyName > values[j].ProxyName
+	})
 	return values
 }
 
@@ -359,6 +383,14 @@ func editProxy(proxy message.ProxyMsg) (err error) {
 		return errors.New("核验配置错误")
 	}
 	defaultProxyConfList[tcpProxy.ProxyName] = tcpProxy
+	//判断当前代理如果处于运行中，重新刷新配置
+	_, has = activityProxyConfList[proxy.ProxyName]
+	if has {
+		activityProxyConfList[tcpProxy.ProxyName] = tcpProxy
+		if run == 1 {
+			server.ReloadConf(activityProxyConfList, nil)
+		}
+	}
 	return nil
 }
 
@@ -370,6 +402,14 @@ func delProxy(proxy message.ProxyMsg) (err error) {
 		return errors.New("不存在该名称的代理")
 	}
 	delete(defaultProxyConfList, proxy.ProxyName)
+	//判断当前代理如果处于运行中，重新刷新配置
+	_, has = activityProxyConfList[proxy.ProxyName]
+	if has {
+		delete(activityProxyConfList, proxy.ProxyName)
+		if run == 1 {
+			server.ReloadConf(activityProxyConfList, nil)
+		}
+	}
 	return nil
 }
 
@@ -392,14 +432,14 @@ func openProxy(proxyStatus message.ProxyStatus) error {
 }
 
 // connectFrpServer 连接frp服务器
-func connectFrpServer() {
+func connectFrpServer(ch chan int) {
 	if run == 1 {
 		server.Close()
 	}
 	run = -1
 	serverCfg.AdminUser = "admin"
 	serverCfg.AdminPwd = "admin"
-	serverCfg.DialServerTimeout = 5
+	serverCfg.DialServerTimeout = 3
 	frpAdminPort, _ = utils.GetAvailablePort()
 	serverCfg.AdminPort = frpAdminPort
 
@@ -416,6 +456,7 @@ func connectFrpServer() {
 	atomic.CompareAndSwapInt64(&run, int64(-1), int64(1))
 	err = server.Run(ctx)
 	if err != nil {
+		ch <- -1
 		fmt.Println(err)
 		atomic.CompareAndSwapInt64(&run, int64(1), int64(0))
 		activityProxyConfList = map[string]config.ProxyConf{}

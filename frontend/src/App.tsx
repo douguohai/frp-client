@@ -151,7 +151,7 @@ class AMISComponent extends React.Component<any, any> {
                     {
                         "type": "form",
                         "initApi": "/api/getServer",
-                        "interval": 10000,
+                        // "interval": 10000,
                         "api": {
                             "url": "/api/connect"
                         },
@@ -189,39 +189,12 @@ class AMISComponent extends React.Component<any, any> {
                                     "click": {
                                         "actions": [
                                             {
-                                                "actionType": "submit",
-                                                "componentId": "server-config-form"
-                                            },
-                                            {
                                                 "actionType": "disabled",
-                                                "expression": "${event.data.responseResult.responseStatus === 0}",
                                                 "componentId": "connect-id"
                                             },
                                             {
-                                                "actionType": "reload",
+                                                "actionType": "submit",
                                                 "componentId": "server-config-form"
-                                            },
-
-                                            {
-                                                "actionType": "parallel",
-                                                "children": [
-                                                    {
-                                                        "actionType": "disabled",
-                                                        "componentId": "server-ip-id"
-                                                    },
-                                                    {
-                                                        "actionType": "disabled",
-                                                        "componentId": "server-port-id"
-                                                    },
-                                                    {
-                                                        "actionType": "disabled",
-                                                        "componentId": "connect-id"
-                                                    },
-                                                    {
-                                                        "actionType": "enabled",
-                                                        "componentId": "disconnect-server-button"
-                                                    }
-                                                ]
                                             }
                                         ]
                                     }
@@ -284,10 +257,39 @@ class AMISComponent extends React.Component<any, any> {
                             }
                         ],
                         "onEvent": {
-                            "validateSucc": {
+                            "submitSucc": {
                                 "actions": [
-
-
+                                    {
+                                        "actionType": "parallel",
+                                        "expression": "${event.data.result.status  === 0}",
+                                        "children": [
+                                            {
+                                                "actionType": "disabled",
+                                                "componentId": "server-ip-id"
+                                            },
+                                            {
+                                                "actionType": "disabled",
+                                                "componentId": "server-port-id"
+                                            },
+                                            {
+                                                "actionType": "disabled",
+                                                "componentId": "connect-id"
+                                            },
+                                            {
+                                                "actionType": "enabled",
+                                                "componentId": "disconnect-server-button"
+                                            }
+                                        ]
+                                    }
+                                ]
+                            },
+                            "submitFail": {
+                                "actions": [
+                                    {
+                                        "actionType": "enabled",
+                                        "expression": "${event.data.result.status  !== 0}",
+                                        "componentId": "connect-id"
+                                    },
                                 ]
                             },
                             "inited": {
@@ -400,7 +402,7 @@ class AMISComponent extends React.Component<any, any> {
                             "method": "get",
                             "replaceData": true
                         },
-                        "interval": 10000,
+                        "interval": 5000,
                         "data": {
                             "now": 1,
                             "rows": []
