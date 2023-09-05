@@ -150,14 +150,22 @@ class AMISComponent extends React.Component<any, any> {
                 "body": [
                     {
                         "type": "form",
-                        "initApi": "/api/getServer",
-                        // "interval": 10000,
+                        "initApi": {
+                            "url": "/api/getServer",
+                            "data": {
+                                time: "${time}"
+                            },
+                        },
+                        // "interval": 20000,
                         "api": {
-                            "url": "/api/connect"
+                            "url": "/api/connect",
+                            "data": {
+                                serverIp: "${serverIp}",
+                                serverPort: "${serverPort}"
+                            },
                         },
                         "id": "server-config-form",
                         "title": "服务器设置",
-                        "autoFocus": false,
                         "body": [
                             {
                                 "type": "input-text",
@@ -180,7 +188,7 @@ class AMISComponent extends React.Component<any, any> {
                             },
                             {
                                 "type": "button",
-                                "icon": "fa fa-trash",
+                                "icon": "fas fa-globe-asia",
                                 "level": "info",
                                 "id": "connect-id",
                                 "label": "连接",
@@ -202,8 +210,8 @@ class AMISComponent extends React.Component<any, any> {
                             },
                             {
                                 "type": "button",
-                                "icon": "fa fa-trash",
-                                "level": "info",
+                                "icon": "far fa-stop-circle",
+                                "level": "danger",
                                 "id": "disconnect-server-button",
                                 "label": "中断",
                                 "tooltip": "断后如当前存在正在运行的映射，将全部中断",
@@ -300,22 +308,22 @@ class AMISComponent extends React.Component<any, any> {
                                             {
                                                 "actionType": "disabled",
                                                 "componentId": "server-ip-id",
-                                                "expression": "${event.data.runStatus}",
+                                                "expression": "${event.data.runStatus==1}",
                                             },
                                             {
                                                 "actionType": "disabled",
                                                 "componentId": "server-port-id",
-                                                "expression": "${event.data.runStatus}",
+                                                "expression": "${event.data.runStatus==1}",
                                             },
                                             {
                                                 "actionType": "disabled",
                                                 "componentId": "connect-id",
-                                                "expression": "${event.data.runStatus}",
+                                                "expression": "${event.data.runStatus==1}",
                                             },
                                             {
                                                 "actionType": "disabled",
                                                 "componentId": "disconnect-server-button",
-                                                "expression": "${event.data.runStatus==false}",
+                                                "expression": "${event.data.runStatus!=1}",
                                             }
                                         ]
                                     }
@@ -329,7 +337,7 @@ class AMISComponent extends React.Component<any, any> {
                     },
                     {
                         "type": "button",
-                        "icon": "fa fa-trash",
+                        "icon": "fas fa-plus-square",
                         "actionType": "dialog",
                         "level": "warning",
                         "dialog": {
@@ -400,13 +408,13 @@ class AMISComponent extends React.Component<any, any> {
                         "api": {
                             "url": "/api/getProxy",
                             "method": "get",
-                            "replaceData": true
+                            "replaceData": true,
+                            "data": {
+                                time: "${time}"
+                            },
                         },
                         "interval": 5000,
-                        "data": {
-                            "now": 1,
-                            "rows": []
-                        },
+                        "silentPolling": true,
                         "body": [
                             {
                                 "mode": "cards",
@@ -470,8 +478,25 @@ class AMISComponent extends React.Component<any, any> {
                                         },
                                         {
                                             "name": "remoteAddr",
-                                            "label": "访问链接"
-                                        }
+                                            "label": "访问链接",
+                                            // "style":{
+                                            //     "fontSize:11"
+                                            // },
+                                            "className": "text-blue-400 m:text-red-400",
+                                            "onEvent": {
+                                                "click": {
+                                                    "actions": [
+                                                        {
+                                                            "actionType": "copy",
+                                                            "args": {
+                                                                "content": "${remoteAddr}"
+                                                            }
+                                                        }
+                                                    ]
+                                                }
+                                            }
+
+                                        },
                                     ],
                                     "actions": [
                                         {

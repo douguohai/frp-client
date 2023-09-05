@@ -64,6 +64,7 @@ func getLocalServerRoute() *mux.Router {
 			},
 			Data: message.ProxyMsgVos{
 				Items: proxy,
+				Time:  time.Now().UnixNano(),
 			},
 		}
 		jsonData, _ := json.Marshal(data)
@@ -251,7 +252,7 @@ func getLocalServerRoute() *mux.Router {
 				Status: -1,
 				Msg:    "连接失败,请检查服务器配置信息",
 			}
-		case <-time.After(5 * time.Second):
+		case <-time.After(4 * time.Second):
 			fmt.Println("5 秒未返回错误，默认认为启动成功")
 		}
 		jsonData, _ := json.Marshal(data)
@@ -584,12 +585,14 @@ func getServiceInfo() message.ServiceInfo {
 			ServerIp:   "127.0.0.1",
 			ServerPort: 0,
 			RunStatus:  0,
+			Time:       time.Now().UnixNano(),
 		}
 	} else {
 		return message.ServiceInfo{
 			ServerIp:   serverIp,
 			ServerPort: serverPort,
 			RunStatus:  run,
+			Time:       time.Now().UnixNano(),
 		}
 	}
 }
