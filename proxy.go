@@ -13,8 +13,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/douguohai/frp-client2/message"
-	"github.com/douguohai/frp-client2/utils"
+	"github.com/douguohai/frp-client/message"
+	"github.com/douguohai/frp-client/utils"
 	"github.com/fatedier/frp/client"
 	"github.com/fatedier/frp/client/proxy"
 	"github.com/fatedier/frp/pkg/config"

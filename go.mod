@@ -1,4 +1,4 @@
-module github.com/douguohai/frp-client2
+module github.com/douguohai/frp-client
 
 go 1.18
 
