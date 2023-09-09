@@ -20,9 +20,15 @@ type ConnectServerMsg struct {
 
 // ProxyMsg 新增代理消息
 type ProxyMsg struct {
-	ProxyName  string `json:"proxyName"`
-	LocalPort  int    `json:"localPort"`
-	RemotePort int    `json:"remotePort"`
+	ProxyName       string `json:"proxyName"`       //本地代理名称
+	RemoteProxyName string `json:"remoteProxyName"` //远程代理名称
+	LocalPort       int    `json:"localPort"`       //本地端口
+	RemotePort      int    `json:"remotePort"`      //远程端口
+	Type            string `json:"type"`            //代理类型
+	Status          bool   `json:"status"`          //代理预期运行状态
+	RunStatus       string `json:"runStatus"`       //代理实际运行状态
+	AddTime         int64  `json:"addTime"`         //新增时间，排序用
+	RemoteAddr      string `json:"remote_addr"`     //远程访问地址
 }
 
 // ProxyMsgVo 代理展示消息
@@ -33,6 +39,7 @@ type ProxyMsgVo struct {
 	RemotePort int    `json:"remotePort"`
 	Status     bool   `json:"status"`
 	RemoteAddr string `json:"remoteAddr"`
+	AddTime    int64  `json:"addTime"` //新增时间，排序用
 }
 
 type ProxyMsgVos struct {

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"sort"
 	"strings"
@@ -16,10 +17,10 @@ import (
 	"github.com/douguohai/frp-client/message"
 	"github.com/douguohai/frp-client/utils"
 	"github.com/fatedier/frp/client"
-	"github.com/fatedier/frp/client/proxy"
 	"github.com/fatedier/frp/pkg/config"
 	"github.com/fatedier/frp/pkg/consts"
 	"github.com/gorilla/mux"
+	"github.com/sdomino/scribble"
 )
 
 var (
@@ -30,11 +31,6 @@ var (
 	// 服务器IP
 	serverIp string = ""
 
-	// 代理配置
-	defaultProxyConfList  = map[string]config.ProxyConf{}
-	activityProxyConfList = map[string]config.ProxyConf{}
-	proxyRunStatus        = map[string]message.TCPProxyStatsu{}
-
 	serverCfg = config.GetDefaultClientConf()
 
 	ctx = context.Background()
@@ -43,10 +39,20 @@ var (
 
 	// 创建定时任务，每秒执行一次
 	ticker = time.NewTicker(time.Second * 5)
+
+	dir = "./store"
+
+	db *scribble.Driver
 )
 
 func init() {
-	frpAdminPort, _ = utils.GetAvailablePort()
+	var err error
+	db, err = scribble.New(dir, nil)
+	if err != nil {
+		fmt.Println("[db init failed]", err)
+	} else {
+		fmt.Println("[db init successfull]", db)
+	}
 }
 
 // getLocalServerRoute 开启本地服务
@@ -83,12 +89,12 @@ func getLocalServerRoute() *mux.Router {
 		var proxy = message.ProxyMsg{}
 		err = json.Unmarshal(body, &proxy)
 		if err != nil {
-			http.Error(writer, "Failed to parse JSON", http.StatusBadRequest)
+			buildFail(writer, err.Error(), nil)
 			return
 		}
 
-		if addProxy(proxy) != nil {
-			http.Error(writer, "Failed to parse JSON", http.StatusBadRequest)
+		if err := addProxy(proxy); err != nil {
+			buildFail(writer, err.Error(), nil)
 			return
 		}
 
@@ -295,146 +301,136 @@ func getLocalServerRoute() *mux.Router {
 
 // addProxy 添加代理
 // proxy 代理信息
-func addProxy(proxy message.ProxyMsg) (err error) {
-	cfg := &config.TCPProxyConf{}
-	cfg.ProxyName = proxy.ProxyName
-
-	cfg.ProxyType = consts.TCPProxy
-	cfg.LocalIP = "127.0.0.1"
-	cfg.LocalPort = proxy.LocalPort
-	cfg.RemotePort = proxy.RemotePort
-	cfg.UseEncryption = false
-	cfg.UseCompression = false
-	cfg.BandwidthLimit, err = config.NewBandwidthQuantity("")
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-	cfg.BandwidthLimitMode = config.BandwidthLimitModeClient
-
-	err = cfg.ValidateForClient()
-	if err != nil {
-		fmt.Println(err)
-		return
+func addProxy(proxy message.ProxyMsg) error {
+	//判断是否存在重名服务，只检测本地名称
+	proxys := getProxyFromDb(proxy.ProxyName)
+	if len(proxys) != 0 {
+		return errors.New("该服务已经存在,请更换服务名")
 	}
 
-	defaultProxyConfList[cfg.ProxyName] = cfg
+	proxy.ProxyName = strings.Trim(proxy.ProxyName, " ")
+	proxy.AddTime = time.Now().UnixNano()
+	proxy.RemoteProxyName = fmt.Sprintf("%v_%v", proxy.ProxyName, proxy.AddTime)
+	proxy.Status = false
+	proxy.Type = "tcp"
+
+	_, err := getProxyCfg(proxy)
+	if err != nil {
+		fmt.Println(err)
+		return errors.New("核验配置错误")
+	}
+
+	if err := db.Write("proxys", proxy.ProxyName, proxy); err != nil {
+		fmt.Println("[db]-[insert] 添加数据库失败 ", err)
+		return errors.New("添加数据库失败")
+	} else {
+		fmt.Println("添加成功")
+	}
 	return nil
 }
 
 // getProxy 获取代理列表
 func getProxy() []message.ProxyMsgVo {
-	values := make([]message.ProxyMsgVo, 0, len(defaultProxyConfList))
-	for _, value := range defaultProxyConfList {
-		proxyType := strings.ToLower(value.GetBaseConfig().ProxyType)
+	proxys := getProxyFromDb("")
+
+	values := make([]message.ProxyMsgVo, 0)
+
+	for _, value := range proxys {
+		proxyType := strings.ToLower(value.Type)
 		switch proxyType {
 		case "tcp":
-			temp := value.(*config.TCPProxyConf)
-			_, run := activityProxyConfList[temp.ProxyName]
-			proxyStatus, has := proxyRunStatus[temp.ProxyName]
-			tempStatus := true
-			if !run {
-				tempStatus = false
-			}
-			tempRemoteAddress := "暂无"
-			if has {
-				tempRemoteAddress = proxyStatus.RemoteAddr
-				if proxyStatus.Status == proxy.ProxyPhaseRunning {
-
-				} else if proxyStatus.Status == proxy.ProxyPhaseClosed || proxyStatus.Status == proxy.ProxyPhaseStartErr {
-					tempStatus = false
-					tempRemoteAddress = "暂无"
-				}
-			}
+			tempStatus := value.Status
 			values = append(values, message.ProxyMsgVo{
-				ProxyName:  temp.ProxyName,
-				Type:       temp.ProxyType,
-				LocalPort:  temp.LocalPort,
-				RemotePort: temp.RemotePort,
+				ProxyName:  value.ProxyName,
+				Type:       value.Type,
+				LocalPort:  value.LocalPort,
+				RemotePort: value.RemotePort,
 				Status:     tempStatus,
-				RemoteAddr: tempRemoteAddress,
+				RemoteAddr: value.RemoteAddr,
+				AddTime:    value.AddTime,
 			})
 		}
 	}
-
 	//对value 进行排序
 	sort.Slice(values, func(i, j int) bool {
-		return values[i].ProxyName > values[j].ProxyName
+		return values[i].AddTime > values[j].AddTime
 	})
 	return values
 }
 
 // addProxy 添加代理
 // proxy 代理信息
-func editProxy(proxy message.ProxyMsg) (err error) {
+func editProxy(proxy message.ProxyMsg) error {
 
-	old, has := defaultProxyConfList[proxy.ProxyName]
-	if !has {
+	proxys := getProxyFromDb(strings.Trim(proxy.ProxyName, " "))
+	if len(proxys) != 1 {
 		return errors.New("不存在该名称的代理")
 	}
+	temp := proxys[0]
 
-	tcpProxy := old.(*config.TCPProxyConf)
+	temp.LocalPort = proxy.LocalPort
+	temp.RemotePort = proxy.RemotePort
+	temp.Status = false
 
-	tcpProxy.LocalPort = proxy.LocalPort
-	tcpProxy.RemotePort = proxy.RemotePort
-
-	err = tcpProxy.ValidateForClient()
+	_, err := getProxyCfg(temp)
 	if err != nil {
 		fmt.Println(err)
 		return errors.New("核验配置错误")
 	}
-	defaultProxyConfList[tcpProxy.ProxyName] = tcpProxy
-	//判断当前代理如果处于运行中，重新刷新配置
-	_, has = activityProxyConfList[proxy.ProxyName]
-	if has {
-		activityProxyConfList[tcpProxy.ProxyName] = tcpProxy
-		if run == 1 {
-			server.ReloadConf(activityProxyConfList, nil)
-		}
+
+	if err := db.Write("proxys", temp.ProxyName, temp); err != nil {
+		fmt.Printf(err.Error())
+		return errors.New("修改异常")
 	}
+
+	reloadConfigFromDb()
 	return nil
 }
 
 // addProxy 添加代理
 // proxy 代理信息
-func delProxy(proxy message.ProxyMsg) (err error) {
-	_, has := defaultProxyConfList[proxy.ProxyName]
-	if !has {
+func delProxy(delProxy message.ProxyMsg) (err error) {
+	proxys := getProxyFromDb(strings.Trim(delProxy.ProxyName, " "))
+	if len(proxys) != 1 {
 		return errors.New("不存在该名称的代理")
 	}
-	delete(defaultProxyConfList, proxy.ProxyName)
-	//判断当前代理如果处于运行中，重新刷新配置
-	_, has = activityProxyConfList[proxy.ProxyName]
-	if has {
-		delete(activityProxyConfList, proxy.ProxyName)
-		if run == 1 {
-			server.ReloadConf(activityProxyConfList, nil)
-		}
+	temp := proxys[0]
+
+	// Delete a fish from the database
+	if err := db.Delete("proxys", temp.ProxyName); err != nil {
+		fmt.Println("Error", err)
 	}
+
+	//判断当前代理如果处于运行中,等待关闭，重新刷新配置
+	reloadConfigFromDb()
+
 	return nil
 }
 
 // addProxy 添加代理
 // proxy 代理信息
 func openProxy(proxyStatus message.ProxyStatus) error {
-	proxy, has := defaultProxyConfList[proxyStatus.ProxyName]
-	if !has {
+	proxys := getProxyFromDb(strings.Trim(proxyStatus.ProxyName, " "))
+	if len(proxys) != 1 {
 		return errors.New("不存在该名称的代理")
 	}
-	if proxyStatus.Status {
-		activityProxyConfList[proxyStatus.ProxyName] = proxy
-	} else {
-		delete(activityProxyConfList, proxyStatus.ProxyName)
+	temp := proxys[0]
+
+	temp.Status = proxyStatus.Status
+
+	if err := db.Write("proxys", temp.ProxyName, temp); err != nil {
+		fmt.Printf(err.Error())
+		return errors.New("开启失败")
 	}
-	if run == 0 {
-		return errors.New("远程服务未连接，请连接远程服务")
-	}
-	return server.ReloadConf(activityProxyConfList, nil)
+
+	reloadConfigFromDb()
+	return nil
 }
 
 // connectFrpServer 连接frp服务器
 func connectFrpServer(ch chan int) {
 	if run == 1 {
+		closeAllProxy()
 		server.Close()
 	}
 	run = -1
@@ -444,7 +440,7 @@ func connectFrpServer(ch chan int) {
 	frpAdminPort, _ = utils.GetAvailablePort()
 	serverCfg.AdminPort = frpAdminPort
 
-	server, _ = client.NewService(serverCfg, activityProxyConfList, nil, "")
+	activityProxyConfList := map[string]config.ProxyConf{}
 
 	serverCfg.ServerAddr = serverIp
 	serverCfg.ServerPort = serverPort
@@ -460,11 +456,7 @@ func connectFrpServer(ch chan int) {
 		ch <- -1
 		fmt.Println(err)
 		atomic.CompareAndSwapInt64(&run, int64(1), int64(0))
-		activityProxyConfList = map[string]config.ProxyConf{}
 		ticker.Stop()
-		// w.SendMessage(message.Msg{
-		// 	Type: message.ConnectError}, func(m *astilectron.EventMessage) {
-		// })
 	}
 }
 
@@ -472,7 +464,8 @@ func connectFrpServer(ch chan int) {
 func unlockConfig() {
 	serverCfg.ServerAddr = ""
 	serverCfg.ServerPort = 0
-	activityProxyConfList = map[string]config.ProxyConf{}
+	closeAllProxy()
+	reloadConfigFromDb()
 	if run == 1 {
 		server.Close()
 		atomic.CompareAndSwapInt64(&run, int64(1), int64(0))
@@ -500,8 +493,6 @@ func doCron() {
 		fmt.Println("定时任务执行", time.Now().Local())
 		if run == 1 {
 			getProxyStatus()
-		} else {
-			proxyRunStatus = map[string]message.TCPProxyStatsu{}
 		}
 	}
 }
@@ -561,9 +552,27 @@ func getProxyStatus() {
 		return
 	}
 
-	proxyRunStatus = map[string]message.TCPProxyStatsu{}
+	proxyRunStatus := map[string]message.TCPProxyStatsu{}
+
 	for _, ts := range innerProxys.TCP {
 		proxyRunStatus[ts.Name] = ts
+	}
+
+	localProxy := getProxyFromDb("")
+
+	for _, localTemp := range localProxy {
+		temp, has := proxyRunStatus[localTemp.RemoteProxyName]
+		if !has {
+			localTemp.Status = false
+			localTemp.RemoteAddr = "暂无"
+		} else {
+			localTemp.RunStatus = temp.Status
+			localTemp.RemoteAddr = temp.RemoteAddr
+		}
+		localTemp.RunStatus = temp.Status
+		if err := db.Write("proxys", localTemp.ProxyName, localTemp); err != nil {
+			log.Print(err.Error())
+		}
 	}
 
 	// 打印 JSON 数据
@@ -595,4 +604,98 @@ func getServiceInfo() message.ServiceInfo {
 			Time:       time.Now().UnixNano(),
 		}
 	}
+}
+
+// getProxyFromDb 数据库获取代理信息
+// filter 过滤字段，代理名称
+func getProxyFromDb(filter string) []message.ProxyMsg {
+	proxys := []message.ProxyMsg{}
+	records, err := db.ReadAll("proxys")
+	if err != nil {
+		fmt.Println("Error", err)
+		return proxys
+	}
+	for _, f := range records {
+		temp := message.ProxyMsg{}
+		if err := json.Unmarshal([]byte(f), &temp); err != nil {
+			fmt.Println("Error", err)
+		}
+		if filter == "" {
+			proxys = append(proxys, temp)
+		}
+		if filter != "" && temp.ProxyName == filter {
+			proxys = append(proxys, temp)
+		}
+	}
+	return proxys
+}
+
+func closeAllProxy() error {
+	records, err := db.ReadAll("proxys")
+	if err != nil {
+		fmt.Println("Error", err)
+		return errors.New("关闭失败")
+	}
+	for _, f := range records {
+		temp := message.ProxyMsg{}
+		if err := json.Unmarshal([]byte(f), &temp); err != nil {
+			fmt.Println("Error", err)
+		}
+		temp.Status = false
+		temp.RemoteAddr = "暂无"
+		if err := db.Write("proxys", temp.ProxyName, temp); err != nil {
+			log.Print(err.Error())
+		}
+	}
+	return err
+}
+
+// reloadConfigFromDb 数据库重新刷新配置
+func reloadConfigFromDb() {
+	proxys := getProxyFromDb("")
+	if len(proxys) == 0 {
+		return
+	}
+
+	proxyConfList := map[string]config.ProxyConf{}
+	//数据库读取所有配置
+	for _, temp := range proxys {
+		//如果预期状态为打开，进行配置文件转换
+		if temp.Status {
+			cfg, err := getProxyCfg(temp)
+			if err != nil {
+				fmt.Println("Error", err)
+				continue
+			}
+			proxyConfList[temp.RemoteProxyName] = cfg
+		}
+	}
+	//reload 配置
+	if run == 1 {
+		server.ReloadConf(proxyConfList, nil)
+	}
+
+}
+
+// addProxy 添加代理
+// proxy 代理信息
+func getProxyCfg(proxy message.ProxyMsg) (*config.TCPProxyConf, error) {
+	cfg := &config.TCPProxyConf{}
+	var err error
+	cfg.ProxyName = proxy.RemoteProxyName
+
+	cfg.ProxyType = consts.TCPProxy
+	cfg.LocalIP = "127.0.0.1"
+	cfg.LocalPort = proxy.LocalPort
+	cfg.RemotePort = proxy.RemotePort
+	cfg.UseEncryption = false
+	cfg.UseCompression = false
+	cfg.BandwidthLimit, err = config.NewBandwidthQuantity("")
+	cfg.BandwidthLimitMode = config.BandwidthLimitModeClient
+
+	err = cfg.ValidateForClient()
+	if err != nil {
+		fmt.Println("[init cfg error]")
+	}
+	return cfg, err
 }

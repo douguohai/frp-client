@@ -8,6 +8,8 @@ require (
 	github.com/wailsapp/wails/v2 v2.5.1
 )
 
+require github.com/jcelliott/lumber v0.0.0-20160324203708-dd349441af25 // indirect
+
 require (
 	github.com/Azure/go-ntlmssp v0.0.0-20200615164410-66371956d46c // indirect
 	github.com/armon/go-socks5 v0.0.0-20160902184237-e75332964ef5 // indirect
@@ -51,6 +53,7 @@ require (
 	github.com/quic-go/qtls-go1-20 v0.3.1 // indirect
 	github.com/quic-go/quic-go v0.37.4 // indirect
 	github.com/samber/lo v1.38.1 // indirect
+	github.com/sdomino/scribble v0.0.0-20230717151034-b95d4df19aa8
 	github.com/templexxx/cpufeat v0.0.0-20180724012125-cef66df7f161 // indirect
 	github.com/templexxx/xor v0.0.0-20191217153810-f85b25db303b // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect

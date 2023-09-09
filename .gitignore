@@ -12,3 +12,4 @@ gen
 !/.vscode/
 build/bin/
 frontend/node_modules
+store
