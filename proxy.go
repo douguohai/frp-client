@@ -17,6 +17,7 @@ import (
 	"github.com/douguohai/frp-client/message"
 	"github.com/douguohai/frp-client/utils"
 	"github.com/fatedier/frp/client"
+	"github.com/fatedier/frp/client/proxy"
 	"github.com/fatedier/frp/pkg/config"
 	"github.com/fatedier/frp/pkg/consts"
 	"github.com/gorilla/mux"
@@ -379,7 +380,7 @@ func editProxy(proxy message.ProxyMsg) error {
 	}
 
 	if err := db.Write("proxys", temp.ProxyName, temp); err != nil {
-		fmt.Printf(err.Error())
+		log.Print(err)
 		return errors.New("修改异常")
 	}
 
@@ -398,7 +399,7 @@ func delProxy(delProxy message.ProxyMsg) (err error) {
 
 	// Delete a fish from the database
 	if err := db.Delete("proxys", temp.ProxyName); err != nil {
-		fmt.Println("Error", err)
+		log.Print("Error", err)
 	}
 
 	//判断当前代理如果处于运行中,等待关闭，重新刷新配置
@@ -419,7 +420,7 @@ func openProxy(proxyStatus message.ProxyStatus) error {
 	temp.Status = proxyStatus.Status
 
 	if err := db.Write("proxys", temp.ProxyName, temp); err != nil {
-		fmt.Printf(err.Error())
+		log.Print(err)
 		return errors.New("开启失败")
 	}
 
@@ -456,6 +457,8 @@ func connectFrpServer(ch chan int) {
 		ch <- -1
 		fmt.Println(err)
 		atomic.CompareAndSwapInt64(&run, int64(1), int64(0))
+		closeAllProxy()
+		reloadConfigFromDb()
 		ticker.Stop()
 	}
 }
@@ -499,9 +502,6 @@ func doCron() {
 
 // tryGetProxyManager 尝试获取代理管理器
 func getProxyStatus() {
-
-	// 要执行的任务
-	fmt.Println("定时任务执行")
 
 	//获取service 中的ctl属性
 
@@ -575,10 +575,7 @@ func getProxyStatus() {
 		}
 	}
 
-	// 打印 JSON 数据
-	fmt.Println(innerProxys)
-
-	fmt.Println("请求成功", proxyRunStatus)
+	log.Println("请求成功", proxyRunStatus)
 
 }
 
@@ -643,6 +640,7 @@ func closeAllProxy() error {
 		}
 		temp.Status = false
 		temp.RemoteAddr = "暂无"
+		temp.RunStatus = proxy.ProxyPhaseClosed
 		if err := db.Write("proxys", temp.ProxyName, temp); err != nil {
 			log.Print(err.Error())
 		}
@@ -690,7 +688,7 @@ func getProxyCfg(proxy message.ProxyMsg) (*config.TCPProxyConf, error) {
 	cfg.RemotePort = proxy.RemotePort
 	cfg.UseEncryption = false
 	cfg.UseCompression = false
-	cfg.BandwidthLimit, err = config.NewBandwidthQuantity("")
+	cfg.BandwidthLimit, _ = config.NewBandwidthQuantity("")
 	cfg.BandwidthLimitMode = config.BandwidthLimitModeClient
 
 	err = cfg.ValidateForClient()
