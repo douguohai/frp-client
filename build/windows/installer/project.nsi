@@ -18,7 +18,7 @@ Unicode true
 ## > makensis -DARG_WAILS_AMD64_BINARY=..\..\bin\app-amd64.exe -DARG_WAILS_ARM64_BINARY=..\..\bin\app-arm64.exe
 ####
 ## The following information is taken from the ProjectInfo file, but they can be overwritten here. 
-####
+####-nsis
 ## !define INFO_PROJECTNAME    "MyProject" # Default "{{.Name}}"
 ## !define INFO_COMPANYNAME    "MyCompany" # Default "{{.Info.CompanyName}}"
 ## !define INFO_PRODUCTNAME    "MyProduct" # Default "{{.Info.ProductName}}"

@@ -9,6 +9,8 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os/user"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -41,14 +43,20 @@ var (
 	// 创建定时任务，每秒执行一次
 	ticker = time.NewTicker(time.Second * 5)
 
-	dir = "./store"
-
 	db *scribble.Driver
 )
 
 func init() {
 	var err error
-	db, err = scribble.New(dir, nil)
+	// 获取当前用户
+	currentUser, err := user.Current()
+	if err != nil {
+		fmt.Println("无法获取当前用户信息:", err)
+		return
+	}
+	// 构建文件路径
+	storeFilePath := filepath.Join(currentUser.HomeDir, ".ftpStore")
+	db, err = scribble.New(storeFilePath, nil)
 	if err != nil {
 		fmt.Println("[db init failed]", err)
 	} else {
@@ -354,7 +362,7 @@ func getProxy() []message.ProxyMsgVo {
 	}
 	//对value 进行排序
 	sort.Slice(values, func(i, j int) bool {
-		return values[i].AddTime > values[j].AddTime
+		return values[i].AddTime < values[j].AddTime
 	})
 	return values
 }
