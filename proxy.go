@@ -51,16 +51,16 @@ func init() {
 	// 获取当前用户
 	currentUser, err := user.Current()
 	if err != nil {
-		fmt.Println("无法获取当前用户信息:", err)
+		log.Println("无法获取当前用户信息:", err)
 		return
 	}
 	// 构建文件路径
 	storeFilePath := filepath.Join(currentUser.HomeDir, ".ftpStore")
 	db, err = scribble.New(storeFilePath, nil)
 	if err != nil {
-		fmt.Println("[db init failed]", err)
+		log.Println("[db init failed]", err)
 	} else {
-		fmt.Println("[db init successfull]", db)
+		log.Println("[db init successfull]", db)
 	}
 }
 
@@ -71,7 +71,7 @@ func getLocalServerRoute() *mux.Router {
 
 	router.HandleFunc("/api/getProxy", func(writer http.ResponseWriter, request *http.Request) {
 		var proxy = getProxy()
-		fmt.Println("获取代理服务成功 frp server：", proxy)
+		log.Println("获取代理服务成功 frp server：", proxy)
 		data := message.ProxyResult{
 			Result: message.Result{
 				Status: 0,
@@ -107,7 +107,7 @@ func getLocalServerRoute() *mux.Router {
 			return
 		}
 
-		fmt.Println("新增代理服务成功 frp server：", proxy)
+		log.Println("新增代理服务成功 frp server：", proxy)
 		data := message.Result{
 			Status: 0,
 			Msg:    "操作成功",
@@ -137,7 +137,7 @@ func getLocalServerRoute() *mux.Router {
 			return
 		}
 
-		fmt.Println("修改代理服务成功 frp server：", proxy)
+		log.Println("修改代理服务成功 frp server：", proxy)
 		data := message.Result{
 			Status: 0,
 			Msg:    "操作成功",
@@ -167,7 +167,7 @@ func getLocalServerRoute() *mux.Router {
 			return
 		}
 
-		fmt.Println("删除代理服务成功 frp server：", proxy)
+		log.Println("删除代理服务成功 frp server：", proxy)
 		data := message.AjaxResult{
 			ResponseStatus: 0,
 			ResponseMsg:    "操作成功",
@@ -209,7 +209,7 @@ func getLocalServerRoute() *mux.Router {
 			return
 		}
 
-		fmt.Println("修改状态成功 frp server：", proxy)
+		log.Println("修改状态成功 frp server：", proxy)
 		data := message.AjaxResult{
 			ResponseStatus: 0,
 			ResponseMsg:    "操作成功",
@@ -262,13 +262,13 @@ func getLocalServerRoute() *mux.Router {
 		// 等待协程的反馈消息，并在 5 秒钟的时间内超时
 		select {
 		case msg := <-ch:
-			fmt.Println(msg)
+			log.Println(msg)
 			data.Result = message.Result{
 				Status: -1,
 				Msg:    "连接失败,请检查服务器配置信息",
 			}
 		case <-time.After(4 * time.Second):
-			fmt.Println("5 秒未返回错误，默认认为启动成功")
+			log.Println("4 秒未返回错误，默认认为启动成功")
 		}
 		jsonData, _ := json.Marshal(data)
 		writer.Write(jsonData)
@@ -325,15 +325,15 @@ func addProxy(proxy message.ProxyMsg) error {
 
 	_, err := getProxyCfg(proxy)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return errors.New("核验配置错误")
 	}
 
 	if err := db.Write("proxys", proxy.ProxyName, proxy); err != nil {
-		fmt.Println("[db]-[insert] 添加数据库失败 ", err)
+		log.Println("[db]-[insert] 添加数据库失败 ", err)
 		return errors.New("添加数据库失败")
 	} else {
-		fmt.Println("添加成功")
+		log.Println("添加成功")
 	}
 	return nil
 }
@@ -383,7 +383,7 @@ func editProxy(proxy message.ProxyMsg) error {
 
 	_, err := getProxyCfg(temp)
 	if err != nil {
-		fmt.Println(err)
+		log.Println(err)
 		return errors.New("核验配置错误")
 	}
 
@@ -463,7 +463,7 @@ func connectFrpServer(ch chan int) {
 	err = server.Run(ctx)
 	if err != nil {
 		ch <- -1
-		fmt.Println(err)
+		log.Println(err)
 		atomic.CompareAndSwapInt64(&run, int64(1), int64(0))
 		closeAllProxy()
 		reloadConfigFromDb()
@@ -501,7 +501,7 @@ func buildFail(writer http.ResponseWriter, msg string, data interface{}) {
 // tryGetProxyManager 尝试获取代理管理器
 func doCron() {
 	for range ticker.C {
-		fmt.Println("定时任务执行", time.Now().Local())
+		log.Println("定时任务执行", time.Now().Local())
 		if run == 1 {
 			getProxyStatus()
 		}
@@ -527,7 +527,7 @@ func getProxyStatus() {
 	// 创建请求对象
 	req, err := http.NewRequest(method, url, nil)
 	if err != nil {
-		fmt.Println("创建请求失败:", err)
+		log.Println("创建请求失败:", err)
 		return
 	}
 
@@ -539,7 +539,7 @@ func getProxyStatus() {
 	// 发送请求
 	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Println("发送请求失败:", err)
+		log.Println("发送请求失败:", err)
 		return
 	}
 	defer resp.Body.Close()
@@ -548,7 +548,7 @@ func getProxyStatus() {
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		fmt.Println("读取响应失败:", err)
+		log.Println("读取响应失败:", err)
 		return
 	}
 
@@ -556,7 +556,7 @@ func getProxyStatus() {
 	var innerProxys message.InnerProxyStatus
 	err = json.Unmarshal(body, &innerProxys)
 	if err != nil {
-		fmt.Println("解析 JSON 失败:", err)
+		log.Println("解析 JSON 失败:", err)
 		return
 	}
 
@@ -617,13 +617,13 @@ func getProxyFromDb(filter string) []message.ProxyMsg {
 	proxys := []message.ProxyMsg{}
 	records, err := db.ReadAll("proxys")
 	if err != nil {
-		fmt.Println("Error", err)
+		log.Println("Error", err)
 		return proxys
 	}
 	for _, f := range records {
 		temp := message.ProxyMsg{}
 		if err := json.Unmarshal([]byte(f), &temp); err != nil {
-			fmt.Println("Error", err)
+			log.Println("Error", err)
 		}
 		if filter == "" {
 			proxys = append(proxys, temp)
@@ -638,13 +638,13 @@ func getProxyFromDb(filter string) []message.ProxyMsg {
 func closeAllProxy() error {
 	records, err := db.ReadAll("proxys")
 	if err != nil {
-		fmt.Println("Error", err)
+		log.Println("Error", err)
 		return errors.New("关闭失败")
 	}
 	for _, f := range records {
 		temp := message.ProxyMsg{}
 		if err := json.Unmarshal([]byte(f), &temp); err != nil {
-			fmt.Println("Error", err)
+			log.Println("Error", err)
 		}
 		temp.Status = false
 		temp.RemoteAddr = "暂无"
@@ -670,7 +670,7 @@ func reloadConfigFromDb() {
 		if temp.Status {
 			cfg, err := getProxyCfg(temp)
 			if err != nil {
-				fmt.Println("Error", err)
+				log.Println("Error", err)
 				continue
 			}
 			proxyConfList[temp.RemoteProxyName] = cfg
@@ -701,7 +701,7 @@ func getProxyCfg(proxy message.ProxyMsg) (*config.TCPProxyConf, error) {
 
 	err = cfg.ValidateForClient()
 	if err != nil {
-		fmt.Println("[init cfg error]")
+		log.Println("[init cfg error]")
 	}
 	return cfg, err
 }
