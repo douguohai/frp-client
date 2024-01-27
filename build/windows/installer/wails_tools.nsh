@@ -8,7 +8,7 @@
     !define INFO_PROJECTNAME "frp-client"
 !endif
 !ifndef INFO_COMPANYNAME
-    !define INFO_COMPANYNAME "tianwen"
+    !define INFO_COMPANYNAME "douguohai"
 !endif
 !ifndef INFO_PRODUCTNAME
     !define INFO_PRODUCTNAME "frpClient"
