@@ -27,3 +27,7 @@ wails build
 
 wails build -webview2=embed -nsis
 ```
+
+
+![image](https://github.com/douguohai/frp-client/assets/35925212/1dc4e7c2-4b26-4493-8896-6bfacc989735)
+
